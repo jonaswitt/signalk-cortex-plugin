@@ -1,0 +1,15 @@
+{
+  "name": "signalk-cortex-plugin",
+  "version": "0.0.1",
+  "main": "index.js",
+  "author": "Jonas Witt <mail@jonaswitt.com>",
+  "license": "MIT",
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-category-hardware"
+  ],
+  "dependencies": {
+    "yacht-data-streams": "^0.0.2"
+  },
+  "repository": "github:jonaswitt/signalk-cortex-plugin"
+}
