@@ -8,12 +8,12 @@ module.exports = (app) => {
     const plugin = {
         id: "signalk-cortex-plugin",
         name: "Cortex (Vesper) VHF",
-        start: (settings, restartPlugin) => {
+        start: ({ vessel_position_type = "raw", ...settings }, restartPlugin) => {
             websocket = new CortexWebsocket(settings.cortex_host, [
-                ...(settings.send_vessel_information || settings.send_anchor_radius ? ["VesselControl"] : []),
+                ...(settings.send_vessel_information || settings.send_anchor_radius || vessel_position_type !== "raw" ? ["VesselControl"] : []),
                 ...(settings.send_vessel_position || settings.send_anchor_radius ? ["VesselPositionUnderway"] : []),
                 ...(settings.send_heading ? ["InternalHeading"] : []),
-                ...(settings.send_anchor_radius || settings.send_heading ? ["Heading"] : []),
+                ...(settings.send_anchor_radius || vessel_position_type !== "raw" || settings.send_heading ? ["Heading"] : []),
                 ...(settings.send_pressure ? ["BarometricPressure"] : []),
                 ...(settings.send_anchor || settings.send_anchor_radius ? ["AnchorWatchControl"] : []),
                 ...(settings.send_anchor_alarm ? ["AnchorWatch"] : []),
@@ -74,6 +74,8 @@ module.exports = (app) => {
             }
 
             websocket.on("message", (msgType, payload) => {
+                app.debug(`Cortex message: ${msgType} - ${JSON.stringify(payload)}`);
+
                 switch (msgType) {
                     case 'VesselControl':
                         const values = []
@@ -146,12 +148,40 @@ module.exports = (app) => {
                             latitude: payload.a / 10_000_000,
                             longitude: payload.o / 10_000_000,
                         };
+                        sendPosition = lastPosition;
+
+                        if (vessel_position_type !== "raw" && lastLength != null && lastAntennaToStern != null && lastHeading != null) {
+                            switch (vessel_position_type) {
+                                case "bow":
+                                    sendPosition = getLocationFromBearing(
+                                        lastPosition,
+                                        lastLength - lastAntennaToStern,
+                                        lastHeading
+                                    );
+                                    break;
+                                case "center":
+                                    sendPosition = getLocationFromBearing(
+                                        lastPosition,
+                                        (lastLength / 2) - lastAntennaToStern,
+                                        lastHeading
+                                    );
+                                    break;
+                                case "stern":
+                                    sendPosition = getLocationFromBearing(
+                                        lastPosition,
+                                        -lastAntennaToStern,
+                                        lastHeading
+                                    );
+                                    break;
+                            }
+                        }
+
                         if (settings.send_vessel_position) {
                             app.handleMessage(plugin.id, {
                                 updates: [{
                                     values: [{
                                         path: 'navigation.position',
-                                        value: lastPosition,
+                                        value: sendPosition,
                                     }]
                                 }]
                             });
@@ -269,6 +299,11 @@ module.exports = (app) => {
                     type: 'boolean',
                     title: 'Send Vessel Position',
                     default: true
+                },
+                vessel_position_type: {
+                    enum: ["raw", "bow", "center", "stern"],
+                    title: 'Which position to send as vessel position; "raw" means GPS antenna position, use "bow" to imitate Cortex anchor alarm visualization which plots the bow position',
+                    default: "raw"
                 },
                 send_heading: {
                     type: 'boolean',
