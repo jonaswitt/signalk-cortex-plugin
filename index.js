@@ -15,6 +15,7 @@ module.exports = (app) => {
                 ...(settings.send_heading ? ["InternalHeading"] : []),
                 ...(settings.send_pressure ? ["BarometricPressure"] : []),
                 ...(settings.send_anchor ? ["AnchorWatchControl"] : []),
+                ...(settings.send_anchor_alarm ? ["AnchorWatch"] : []),
             ]);
 
             websocket.on("message", (msgType, payload) => {
@@ -141,6 +142,24 @@ module.exports = (app) => {
                             }]
                         });
                         break;
+
+                    case 'AnchorWatch':
+                        app.handleMessage(plugin.id, {
+                            updates: [{
+                                values: [{
+                                    path: "notifications.navigation.anchor",
+                                    value: payload.outOfBounds ? {
+                                        state: "alarm",
+                                        method: ["sound"],
+                                        message: "Anchor out of bounds",
+                                    } : {
+                                        state: "normal",
+                                        message: "Anchor within bounds",
+                                    },
+                                }]
+                            }]
+                        });
+                        break;
                 }
             });
         },
@@ -180,6 +199,11 @@ module.exports = (app) => {
                 send_anchor: {
                     type: 'boolean',
                     title: 'Send Anchor Position & Max. Radius',
+                    default: true
+                },
+                send_anchor_alarm: {
+                    type: 'boolean',
+                    title: 'Send Anchor Alarm',
                     default: true
                 },
             },
