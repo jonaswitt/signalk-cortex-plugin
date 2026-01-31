@@ -13,7 +13,7 @@ module.exports = (app) => {
                 ...(settings.send_vessel_information || settings.send_anchor_radius ? ["VesselControl"] : []),
                 ...(settings.send_vessel_position || settings.send_anchor_radius ? ["VesselPositionUnderway"] : []),
                 ...(settings.send_heading ? ["InternalHeading"] : []),
-                ...(settings.send_anchor_radius ? ["Heading"] : []),
+                ...(settings.send_anchor_radius || settings.send_heading ? ["Heading"] : []),
                 ...(settings.send_pressure ? ["BarometricPressure"] : []),
                 ...(settings.send_anchor || settings.send_anchor_radius ? ["AnchorWatchControl"] : []),
                 ...(settings.send_anchor_alarm ? ["AnchorWatch"] : []),
@@ -25,6 +25,7 @@ module.exports = (app) => {
             let lastLength = null;
             let lastAntennaToStern = null;
             let lastHeading = null;
+            let lastMagneticVariation = null;
 
             const makeCalcValues = () => {
                 // app.debug(`Calculating derived values with ${JSON.stringify({ position: lastPosition, anchorPosition: lastAnchorPosition, length: lastLength, antennaToStern: lastAntennaToStern, heading: lastHeading })}`);
@@ -159,13 +160,21 @@ module.exports = (app) => {
                         break;
 
                     case "InternalHeading":
-                        if (!(payload.heading != null && !Number.isNaN(payload.heading))) { return }
+                        if (!(payload.heading != null && !Number.isNaN(payload.heading))) {
+                            return;
+                        }
                         app.handleMessage(plugin.id, {
                             updates: [{
                                 values: [{
+                                    path: "navigation.headingMagnetic",
+                                    value: payload.heading != null ? degToRad(payload.heading) : null,
+                                }, ...(lastMagneticVariation != null ? [{
+                                    path: "navigation.magneticVariation",
+                                    value: degToRad(lastMagneticVariation),
+                                }, {
                                     path: "navigation.headingTrue",
-                                    value: payload.heading != null ? payload.heading / 180 * Math.PI : null,
-                                }]
+                                    value: payload.heading != null ? degToRad((payload.heading + lastMagneticVariation) % 360) : null,
+                                }] : [])]
                             }]
                         });
                         break;
@@ -174,6 +183,9 @@ module.exports = (app) => {
                         if (payload.true != null && !Number.isNaN(payload.true)) {
                             lastHeading = payload.true;
                         }
+                        if (payload.magVar != null && !Number.isNaN(payload.magVar)) {
+                            lastMagneticVariation = payload.magVar;
+                        }
                         break;
 
                     case "BarometricPressure":
@@ -181,7 +193,7 @@ module.exports = (app) => {
                             !(payload.internalPressure != null &&
                                 !Number.isNaN(payload.internalPressure))
                         ) {
-                            return
+                            return;
                         }
                         app.handleMessage(plugin.id, {
                             updates: [{
